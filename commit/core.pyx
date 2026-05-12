@@ -1350,7 +1350,7 @@ cdef class Evaluation :
         logger.info( f'[ {format_time(time.time() - tr)} ]' )
 
 
-    def fit( self, tol_fun=1e-3, tol_x=1e-6, max_iter=100, x0=None, confidence_map_filename=None, confidence_map_rescale=False, debias=False ) :
+    def fit( self, tol_fun=1e-3, tol_x=1e-6, max_iter=100, x0=None, confidence_map_filename=None, confidence_map_rescale=False, debias=False, thr_debias=1e-15 ):
         """Fit the model to the data.
 
         Parameters
@@ -1371,6 +1371,10 @@ cdef class Evaluation :
             If true, the values of the confidence map will be rescaled to the
             range [0.0,1.0]. Only the voxels considered in the mask will be affected.
             (default : False)
+        debias : boolean
+            If true, the debias step will be performed (default : False)
+        thr_debias : float
+            Threshold for the debiasing step (default : 1e-15)
         """
         if self.niiDWI is None :
             logger.error( 'Data not loaded; call "load_data()" first' )
@@ -1477,13 +1481,13 @@ cdef class Evaluation :
         if (self.regularisation_params['regIC']!=None or self.regularisation_params['regEC']!= None or self.regularisation_params['regISO']!= None) and debias:
             from commit.operator import operator
             temp_verb = self.verbose
-            logger.info( 'Running debias' )
+            logger.info( f'Running debias (with threshold={thr_debias:.2e})' )
             self.set_verbose(0)
 
             offset = self.DICTIONARY['IC']['nSTR'] * self.KERNELS['wmr'].shape[0]
             xic = self.x[:offset]
             mask = np.ones(offset, dtype=np.uint32)
-            mask[xic<0.000000000000001] = 0
+            mask[xic<thr_debias] = 0
 
             if np.sum(mask)==0:
                 logger.warning('All coefficients of the IC compartment are below the debias threshold. The debias step will not be performed. Note: consider softening the regularisation by decreasing the lambda value(s).')
