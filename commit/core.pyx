@@ -1473,6 +1473,7 @@ cdef class Evaluation :
             logger.subinfo(f'Stopped after {opt_details["iterations"]} iterations', indent_lvl=1, indent_char='*', with_progress=True)
             logger.subinfo(f'Stopping condition: \"{opt_details["stopping_criterion"]}\"', indent_lvl=1, indent_char='*')
 
+        # DEBIAS
         if (self.regularisation_params['regIC']!=None or self.regularisation_params['regEC']!= None or self.regularisation_params['regISO']!= None) and debias:
             from commit.operator import operator
             temp_verb = self.verbose
@@ -1484,28 +1485,31 @@ cdef class Evaluation :
             mask = np.ones(offset, dtype=np.uint32)
             mask[xic<0.000000000000001] = 0
 
-            self.DICTIONARY["IC"]["eval"] = mask
+            if np.sum(mask)==0:
+                logger.warning('All coefficients of the IC compartment are below the debias threshold. The debias step will not be performed. Note: consider softening the regularisation by decreasing the lambda value(s).')
+            else:
+                self.DICTIONARY["IC"]["eval"] = mask
 
-            self.A = operator.LinearOperator( self.DICTIONARY, self.KERNELS, self.THREADS, nolut=True if hasattr(self.model, 'nolut') else False )
+                self.A = operator.LinearOperator( self.DICTIONARY, self.KERNELS, self.THREADS, nolut=True if hasattr(self.model, 'nolut') else False )
 
-            self.set_regularisation()
-            self.set_verbose(temp_verb)
+                self.set_regularisation()
+                self.set_verbose(temp_verb)
 
-            logger.subinfo('Recomputing coefficients', indent_lvl=1, indent_char='*', with_progress=True)
+                logger.subinfo('Recomputing coefficients', indent_lvl=1, indent_char='*', with_progress=True)
 
-            x_debias = self.x.copy()
-            x_debias[:offset] *= mask
-            x_debias[offset:] = 0
+                x_debias = self.x.copy()
+                x_debias[:offset] *= mask
+                x_debias[offset:] = 0
 
-            y_mask = np.asarray(self.A.dot(x_debias))
-            # binarize y_debias
-            y_mask[y_mask<0] = 0
-            y_mask[y_mask>0] = 1
+                y_mask = np.asarray(self.A.dot(x_debias))
+                # binarize
+                y_mask[y_mask<0] = 0
+                y_mask[y_mask>0] = 1
 
-            self.debias_mask = y_mask
+                self.debias_mask = y_mask
 
-            with ProgressBar(disable=self.verbose!=3, hide_on_exit=True, subinfo=True) as pbar:
-                self.x, opt_details = commit.solvers.solve(self.get_y(), self.A, self.A.T, tol_fun=tol_fun, tol_x=tol_x, max_iter=max_iter, verbose=self.verbose, x0=x0, regularisation=self.regularisation_params, confidence_array=confidence_array)
+                with ProgressBar(disable=self.verbose!=3, hide_on_exit=True, subinfo=True) as pbar:
+                    self.x, opt_details = commit.solvers.solve(self.get_y(), self.A, self.A.T, tol_fun=tol_fun, tol_x=tol_x, max_iter=max_iter, verbose=self.verbose, x0=x0, regularisation=self.regularisation_params, confidence_array=confidence_array)
 
         elif (self.regularisation_params['regIC']!=None or self.regularisation_params['regEC']!= None or self.regularisation_params['regISO']!= None) and not debias:
             logger.warning('Fitting with regularisation but without debiasing. The coefficients will be biased, use "debias=True" to debias the coefficients')
