@@ -722,9 +722,14 @@ cdef class Evaluation :
         logger.info( f'[ {format_time(time.time() - tic)} ]' )
 
 
-    def build_operator( self ) :
+    def build_operator( self, mask_ic=None ) :
         """Build the operator for computing the matrix-vector multiplications by A and A'
         using the informations from self.DICTIONARY, self.KERNELS and self.THREADS.
+
+        Parameters
+        ----------
+        mask_ic : np.array
+            Binary mask to restrict the evaluation on a subset of columns of the IC compartment.
         """
         if self.DICTIONARY is None :
             logger.error( 'Dictionary not loaded; call "load_dictionary()" first' )
@@ -741,7 +746,10 @@ cdef class Evaluation :
         tic = time.time()
         logger.subinfo('')
         logger.info( 'Building linear operator A' )
-        self.DICTIONARY["IC"]["eval"] = np.ones( int(self.DICTIONARY['IC']['nSTR'] * self.KERNELS['wmr'].shape[0]), dtype=np.uint32)
+        if mask_ic is not None:
+            self.DICTIONARY["IC"]["eval"] = mask_ic
+        else:
+            self.DICTIONARY["IC"]["eval"] = np.ones( int(self.DICTIONARY['IC']['nSTR'] * self.KERNELS['wmr'].shape[0]), dtype=np.uint32)
         self.A = operator.LinearOperator( self.DICTIONARY, self.KERNELS, self.THREADS, True if hasattr(self.model, 'nolut') else False )
         logger.info( f'[ {format_time(time.time() - tic)} ]' )
 
@@ -1379,9 +1387,11 @@ cdef class Evaluation :
             logger.error( 'Response functions not generated; call "generate_kernels()" and "load_kernels()" first' )
         if self.THREADS is None :
             logger.error( 'Threads not set; call "set_threads()" first' )
-        if self.A is None :
-            logger.error( 'Operator not built; call "build_operator()" first' )
 
+        # Build operator
+        self.build_operator()
+
+        # Set default regularisation parameters if not set by the user
         if self.regularisation_params is None:
             self.set_regularisation()
 
@@ -1474,7 +1484,6 @@ cdef class Evaluation :
 
         # DEBIAS
         if (self.regularisation_params['regIC']!=None or self.regularisation_params['regEC']!= None or self.regularisation_params['regISO']!= None) and debias:
-            from commit.operator import operator
             temp_verb = self.verbose
             logger.info( f'Running debias (with threshold={thr_debias:.2e})' )
             self.set_verbose(0)
@@ -1485,17 +1494,15 @@ cdef class Evaluation :
             mask[xic<thr_debias] = 0
 
             if np.sum(mask)==0:
+                self.set_verbose(temp_verb)
                 logger.warning('All coefficients of the IC compartment are below the debias threshold. The debias step will not be performed. Note: consider softening the regularisation by decreasing the lambda value(s).')
             else:
-                self.DICTIONARY["IC"]["eval"] = mask
-
-                self.A = operator.LinearOperator( self.DICTIONARY, self.KERNELS, self.THREADS, nolut=True if hasattr(self.model, 'nolut') else False )
-
+                # update the operator with the new mask for the IC compartment
+                self.build_operator(mask_ic=mask)
+                # run fit on the debiased problem
                 self.set_regularisation()
                 self.set_verbose(temp_verb)
-
                 logger.subinfo('Recomputing coefficients', indent_lvl=1, indent_char='*', with_progress=True)
-
                 with ProgressBar(disable=self.verbose!=3, hide_on_exit=True, subinfo=True) as pbar:
                     self.x, opt_details = commit.solvers.solve(self.get_y(), self.A, self.A.T, tol_fun=tol_fun, tol_x=tol_x, max_iter=max_iter, verbose=self.verbose, x0=x0, regularisation=self.regularisation_params, confidence_array=confidence_array)
 
