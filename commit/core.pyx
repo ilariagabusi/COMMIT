@@ -1353,7 +1353,7 @@ cdef class Evaluation :
         logger.info( f'[ {format_time(time.time() - tr)} ]' )
 
 
-    def fit( self, tol_fun=1e-3, tol_x=1e-6, max_iter=100, x0=None, confidence_map_filename=None, confidence_map_rescale=False, debias=False, thr_debias=1e-15 ):
+    def fit( self, tol_fun=1e-3, tol_x=1e-6, max_iter=100, x0=None, confidence_map_filename=None, confidence_map_rescale=False, debias=False, debias_cond=0.0 ):
         """Fit the model to the data.
 
         Parameters
@@ -1375,9 +1375,14 @@ cdef class Evaluation :
             range [0.0,1.0]. Only the voxels considered in the mask will be affected.
             (default : False)
         debias : boolean
-            If true, the debias step will be performed (default : False)
-        thr_debias : float
-            Threshold for the debiasing step (default : 1e-15)
+            If true, a debiasing step will be performed after the main fitting
+            procedure. Highly suggested when using a regularisation. (default : False)
+        debias_cond : float
+            Condition used to select the coefficients to be debiased. 
+            A second fit (without regularisation) will be performed on the reduced
+            problem defined by as a subset of the original linear operator. This is obtained
+            by selecting only the columns corresponding to estimated coefficients greater 
+            than debias_cond in the main fitting procedure. (default : 0.0)
         """
         if self.niiDWI is None :
             logger.error( 'Data not loaded; call "load_data()" first' )
@@ -1487,17 +1492,17 @@ cdef class Evaluation :
             temp_verb = self.verbose
             logger.subinfo('')
             logger.info( f'Running debias' )
-            logger.subinfo( f'Creating mask for IC compartment with threshold={thr_debias:.2e}', indent_lvl=1, indent_char='*' )
+            logger.subinfo( f'Creating mask for IC compartment with the condition: <={debias_cond:.2e}', indent_lvl=1, indent_char='*' )
             self.set_verbose(0)
 
             offset = self.DICTIONARY['IC']['nSTR'] * self.KERNELS['wmr'].shape[0]
             xic = self.x[:offset]
             mask = np.ones(offset, dtype=np.uint32)
-            mask[xic<thr_debias] = 0
+            mask[xic<=debias_cond] = 0
 
             if np.sum(mask)==0:
                 self.set_verbose(temp_verb)
-                logger.warning('All coefficients of the IC compartment are below the debias threshold. The debias step will not be performed. Note: consider softening the regularisation by decreasing the lambda value(s).')
+                logger.warning('All coefficients of the IC compartment are below the debias condition. The debias step will not be performed. Note: consider softening the regularisation by decreasing the lambda value(s).')
             else:
                 # update the operator with the new mask for the IC compartment
                 self.build_operator(mask_ic=mask)
