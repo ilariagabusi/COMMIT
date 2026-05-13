@@ -747,9 +747,9 @@ cdef class Evaluation :
         logger.subinfo('')
         logger.info( 'Building linear operator A' )
         if mask_ic is not None:
-            self.DICTIONARY["IC"]["eval"] = mask_ic
+            self.DICTIONARY["IC"]["mask"] = mask_ic
         else:
-            self.DICTIONARY["IC"]["eval"] = np.ones( int(self.DICTIONARY['IC']['nSTR'] * self.KERNELS['wmr'].shape[0]), dtype=np.uint32)
+            self.DICTIONARY["IC"]["mask"] = np.ones( int(self.DICTIONARY['IC']['nSTR'] * self.KERNELS['wmr'].shape[0]), dtype=np.uint32)
         self.A = operator.LinearOperator( self.DICTIONARY, self.KERNELS, self.THREADS, True if hasattr(self.model, 'nolut') else False )
         logger.info( f'[ {format_time(time.time() - tic)} ]' )
 
@@ -1485,7 +1485,9 @@ cdef class Evaluation :
         # DEBIAS
         if (self.regularisation_params['regIC']!=None or self.regularisation_params['regEC']!= None or self.regularisation_params['regISO']!= None) and debias:
             temp_verb = self.verbose
-            logger.info( f'Running debias (with threshold={thr_debias:.2e})' )
+            logger.subinfo('')
+            logger.info( f'Running debias' )
+            logger.subinfo( f'Creating mask for IC compartment with threshold={thr_debias:.2e}', indent_lvl=1, indent_char='*' )
             self.set_verbose(0)
 
             offset = self.DICTIONARY['IC']['nSTR'] * self.KERNELS['wmr'].shape[0]
