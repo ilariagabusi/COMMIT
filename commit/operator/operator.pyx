@@ -21,7 +21,7 @@ cdef class LinearOperator :
         unsigned int [::1] ICv
         unsigned int [::1] ECv
         unsigned int [::1] ISOv
-        unsigned int [::1] ICm
+        unsigned int [::1] ICm # debias mask for IC columns
         float [::1]        ICl
         float [:, :, ::1] LUT_IC
         float [:, :, ::1] LUT_EC
@@ -74,7 +74,7 @@ cdef class LinearOperator :
         self.ICl    = DICTIONARY['IC']['len']
         self.ICv    = DICTIONARY['IC']['vox']
         self.ICo    = DICTIONARY['IC']['dir']
-        self.ICm    = DICTIONARY['IC']['mask']
+        self.ICm    = DICTIONARY['IC']['debias_mask']
         self.ECv    = DICTIONARY['EC']['vox']
         self.ECo    = DICTIONARY['EC']['dir']
         self.ISOv   = DICTIONARY['ISO']['vox']
